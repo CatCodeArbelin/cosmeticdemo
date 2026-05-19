@@ -10,7 +10,7 @@ from app.config import get_settings
 from app.database import Database
 from app.handlers import register_handlers
 from app.models import IncomingMessage, IncomingResult
-from app.services import process_incoming_message
+from app.fake_channels import process_incoming_message
 
 settings = get_settings()
 db = Database(settings.database_path)
