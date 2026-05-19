@@ -4,8 +4,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message, CallbackQuery
 
-from app.fake_channels import create_demo_max, create_demo_tg
-from app.services import process_incoming_message, build_manager_card
+from app.fake_channels import create_demo_max, create_demo_tg, build_manager_card
 
 
 class ManualReplyState(StatesGroup):
