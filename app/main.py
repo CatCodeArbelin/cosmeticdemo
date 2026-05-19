@@ -15,7 +15,7 @@ from app.fake_channels import process_incoming_message
 settings = get_settings()
 db = Database(settings.database_path)
 db.init()
-ai_service = AIService(settings.openai_api_key, settings.openai_model)
+ai_service = AIService()
 bot, dp = create_bot_and_dispatcher(settings.bot_token)
 register_handlers(dp, bot, db, ai_service, settings.manager_chat_id)
 

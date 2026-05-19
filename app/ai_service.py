@@ -1,25 +1,8 @@
-import json
-import re
 from pathlib import Path
-from openai import OpenAI
-
-
-SYSTEM_PROMPT = """Ты AI-помощник менеджера магазина профессиональной косметики.
-Ты НЕ отвечаешь клиенту напрямую.
-Ты предлагаешь менеджеру 2 коротких варианта ответа.
-Ответы должны быть на русском языке.
-Обращение на “вы”.
-Стиль: профессиональный, дружелюбный, без давления.
-Не давай медицинских обещаний.
-Не используй слова “лечит”, “избавит от заболевания”, “гарантирует результат”.
-Если клиент спрашивает про заболевания кожи, посоветуй обратиться к врачу/дерматологу и предложи только общий уход.
-Всегда старайся задать 1–2 уточняющих вопроса, если данных недостаточно."""
 
 
 class AIService:
-    def __init__(self, api_key: str, model: str):
-        self.client = OpenAI(api_key=api_key)
-        self.model = model
+    def __init__(self):
         self.knowledge_base = Path("app/knowledge_base.md").read_text(encoding="utf-8")
 
     def _fallback_variants(self):
@@ -28,47 +11,40 @@ class AIService:
             "С радостью помогу с подбором. Уточните, пожалуйста, есть ли чувствительность к активам (кислоты, ретинол, витамин C) и какие средства вы используете сейчас?",
         )
 
-    def _parse_json_fallback(self, raw: str):
-        match = re.search(r"\{.*\}", raw, re.DOTALL)
-        if not match:
-            return None
-        try:
-            return json.loads(match.group(0))
-        except json.JSONDecodeError:
-            return None
+    def _dry_skin_variants(self):
+        return (
+            "Спасибо за обращение! Для сухой кожи обычно хорошо работает мягкое очищение, увлажняющая сыворотка и крем с церамидами. Подскажите, пожалуйста, есть ли ощущение стянутости в течение дня и какой у вас бюджет?",
+            "С радостью помогу подобрать уход для сухой кожи. Рекомендую начать с деликатного очищения и плотного увлажняющего крема, а также SPF утром. Уточните, пожалуйста, есть ли чувствительность кожи и какие средства используете сейчас?",
+        )
+
+    def _acne_variants(self):
+        return (
+            "Спасибо за вопрос! При высыпаниях важно бережно поддерживать барьер кожи. Для базового ухода обычно подходят мягкое очищение, некомедогенный крем и SPF. Подскажите, пожалуйста, есть ли сейчас чувствительность и какие средства уже используете?",
+            "Понимаю ваш запрос. Мы можем предложить общий уход без агрессивных средств: мягкий гель для умывания, лёгкий увлажняющий крем и солнцезащиту. Если есть выраженные воспаления, лучше дополнительно проконсультироваться с дерматологом. Уточните, пожалуйста, ваш текущий уход?",
+        )
+
+    def _sensitive_skin_variants(self):
+        return (
+            "Спасибо за обращение! Для чувствительной кожи лучше выбирать минималистичный уход: мягкое очищение, успокаивающий крем без отдушек и SPF. Подскажите, пожалуйста, есть ли реакция на кислоты или ретинол?",
+            "С радостью подберу деликатный уход. Обычно мы рекомендуем средства с пантенолом и церамидами, без спирта и ярких отдушек. Уточните, пожалуйста, какие продукты вы уже пробовали и какой нужен бюджет?",
+        )
+
+    def _pigmentation_variants(self):
+        return (
+            "Спасибо за запрос! При неровном тоне кожи обычно делают акцент на регулярный SPF и мягкие осветляющие компоненты в домашнем уходе. Подскажите, пожалуйста, ваша кожа чувствительная и используете ли вы SPF ежедневно?",
+            "Понимаю ваш запрос по пигментации. Базово можно рассмотреть уход с антиоксидантами и обязательной солнцезащитой каждый день. Уточните, пожалуйста, какие активы вы уже используете и есть ли раздражение кожи?",
+        )
 
     def generate_variants(self, source: str, client_name: str, client_message: str):
-        user_prompt = f"""Источник: {source}
-Имя клиента: {client_name}
-Сообщение клиента: {client_message}
+        text = (client_message or "").lower()
 
-База знаний:
-{self.knowledge_base}
+        if any(keyword in text for keyword in ("сух", "обезвож", "шелуш")):
+            return self._dry_skin_variants()
+        if any(keyword in text for keyword in ("акне", "прыщ", "высып", "воспал")):
+            return self._acne_variants()
+        if any(keyword in text for keyword in ("чувствит", "раздраж", "покрас")):
+            return self._sensitive_skin_variants()
+        if any(keyword in text for keyword in ("пигмент", "пятн", "тон кожи")):
+            return self._pigmentation_variants()
 
-Верни строго JSON формата:
-{{
-  \"variant_1\": \"...\",
-  \"variant_2\": \"...\"
-}}"""
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": user_prompt},
-                ],
-                temperature=0.5,
-            )
-            content = response.choices[0].message.content or ""
-            parsed = None
-            try:
-                parsed = json.loads(content)
-            except json.JSONDecodeError:
-                parsed = self._parse_json_fallback(content)
-
-            if not parsed or "variant_1" not in parsed or "variant_2" not in parsed:
-                return self._fallback_variants()
-
-            return parsed["variant_1"].strip(), parsed["variant_2"].strip()
-        except Exception:
-            return self._fallback_variants()
+        return self._fallback_variants()
